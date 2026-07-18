@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import json
 from functools import lru_cache
+from importlib.resources import files
+from collections.abc import Iterator
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import Settings
-from .rag import LawRAG
+from .rag import LawRAG, add_deterministic_citations
 
 
 app = FastAPI(title="台灣法規 RAG", version="0.1.0")
@@ -50,27 +53,55 @@ def ask(payload: Question) -> dict[str, object]:
     }
 
 
+def _source_payload(source: object) -> dict[str, object]:
+    return {
+        "score": source.score,
+        "law_name": source.chunk["law_name"],
+        "article_number": source.chunk["article_number"],
+        "modified_date": source.chunk["modified_date"],
+        "url": source.chunk["url"],
+        "text": source.chunk["text"],
+    }
+
+
+def _event(payload: dict[str, object]) -> str:
+    return json.dumps(payload, ensure_ascii=False) + "\n"
+
+
+@app.post("/ask/stream")
+def ask_stream(payload: Question) -> StreamingResponse:
+    def generate() -> Iterator[str]:
+        yield _event({"type": "status", "message": "正在檢索相關法規"})
+        try:
+            sources, tokens = get_rag().stream(payload.question, top_k=payload.top_k)
+            if not sources:
+                yield _event(
+                    {
+                        "type": "final",
+                        "text": "找不到足夠相關的法規內容。請改用更完整的法規名稱、條號或法律關鍵詞。",
+                    }
+                )
+                yield _event({"type": "done"})
+                return
+            yield _event({"type": "sources", "sources": [_source_payload(item) for item in sources]})
+            yield _event({"type": "status", "message": "正在生成法規說明"})
+            parts: list[str] = []
+            for token in tokens:
+                parts.append(token)
+                yield _event({"type": "delta", "text": token})
+            final_text = add_deterministic_citations("".join(parts), sources)
+            yield _event({"type": "final", "text": final_text})
+            yield _event({"type": "done"})
+        except RuntimeError as exc:
+            yield _event({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 def home() -> str:
-    return """<!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>台灣法規 RAG</title><style>
-body{max-width:900px;margin:40px auto;padding:0 20px;font-family:system-ui;color:#17212b;background:#f7f8fa}
-textarea,button{font:inherit}textarea{width:100%;min-height:110px;padding:12px;box-sizing:border-box}
-button{margin-top:10px;padding:10px 20px;background:#075985;color:white;border:0;border-radius:6px;cursor:pointer}
-.card{background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px #0001;margin:16px 0;white-space:pre-wrap}
-.muted{color:#64748b;font-size:.9rem}a{color:#0369a1}</style></head>
-<body><h1>台灣法規 RAG</h1><p class="muted">資料來自法務部公開資料。回答僅供法規檢索參考，不構成法律意見。</p>
-<textarea id="q" placeholder="例如：雇主可以任意解僱勞工嗎？"></textarea><br><button id="send">查詢</button>
-<div id="result"></div><script>
-const send=document.querySelector('#send'),result=document.querySelector('#result');
-send.onclick=async()=>{const question=document.querySelector('#q').value.trim();if(!question)return;
-send.disabled=true;result.innerHTML='<div class="card">查詢中…</div>';
-try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question})});
-const d=await r.json();if(!r.ok)throw new Error(d.detail||'查詢失敗');
-const sources=d.sources.map((s,i)=>`<div class="card"><b>來源 ${i+1}：${esc(s.law_name)} ${esc(s.article_number)}</b><br><a target="_blank" href="${esc(s.url)}">官方法規頁</a><p>${esc(s.text)}</p></div>`).join('');
-result.innerHTML=`<div class="card">${esc(d.answer)}</div><h2>檢索來源</h2>${sources}`;
-}catch(e){result.innerHTML=`<div class="card">${esc(e.message)}</div>`}finally{send.disabled=false}};
-function esc(v){const d=document.createElement('div');d.textContent=v;return d.innerHTML}
-</script></body></html>"""
-
+    return files("taiwan_law_rag").joinpath("web/index.html").read_text(encoding="utf-8")

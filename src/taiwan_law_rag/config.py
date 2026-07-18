@@ -17,7 +17,7 @@ class Settings:
         return cls(
             data_dir=Path(os.getenv("LAW_RAG_DATA_DIR", "./data")).resolve(),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/"),
-            chat_model=os.getenv("OLLAMA_CHAT_MODEL", "llama3.2:latest"),
+            chat_model=os.getenv("OLLAMA_CHAT_MODEL", "qwen2.5:1.5b"),
             embed_model=os.getenv("OLLAMA_EMBED_MODEL", "bge-m3:latest"),
         )
 
@@ -32,4 +32,3 @@ class Settings:
     @property
     def index_dir(self) -> Path:
         return self.data_dir / "index"
-

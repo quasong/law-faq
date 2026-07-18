@@ -1,6 +1,6 @@
 # 台灣法規 RAG
 
-以法務部「全國法規資料庫」官方開放 XML 建立本地法規文件與檢索索引，並使用 Ollama 的 `llama3.2:latest` 生成繁體中文回答。每個回答會附回官方法規頁的來源。
+以法務部「全國法規資料庫」官方開放 XML 建立本地法規文件與檢索索引，並使用 Ollama 的 `qwen2.5:1.5b` 生成繁體中文回答。每個回答會附回官方法規頁的來源。
 
 > 本專案是法規檢索工具，不構成法律意見。法規有時間效力、適用範圍與個案事實問題；涉及重大權益時，請向台灣執業律師確認。
 
@@ -23,7 +23,7 @@
 - [Ollama](https://ollama.com/)
 - 約 2–4 GB 額外磁碟空間（模型、原始資料與索引；依 Ollama 模型版本而異）
 
-`llama3.2:latest` 負責生成回答。預設快速模式使用 SQLite FTS5 中文 bigram/BM25，不需要 embedding 模型；只有選用較慢的完整語意模式時，才會使用 `bge-m3:latest`。
+`qwen2.5:1.5b` 負責生成回答。預設快速模式使用 SQLite FTS5 中文 bigram/BM25，不需要 embedding 模型；只有選用較慢的完整語意模式時，才會使用 `bge-m3:latest`。
 
 ## 安裝
 
@@ -32,7 +32,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install ".[dev]"
 
-ollama pull llama3.2:latest
+ollama pull qwen2.5:1.5b
 
 # 只有要使用 --mode semantic 時才需要
 ollama pull bge-m3:latest
@@ -88,6 +88,8 @@ uvicorn taiwan_law_rag.api:app --host 127.0.0.1 --port 8000
 
 打開 `http://127.0.0.1:8000`，或呼叫：
 
+Web UI 會逐字呈現本地模型輸出、顯示可展開的法規來源，且每次新問題會取代上一題，不保存對話歷史。`POST /ask` 提供一般 JSON 回應；`POST /ask/stream` 提供 NDJSON 串流回應。
+
 ```bash
 curl http://127.0.0.1:8000/ask \
   -H 'Content-Type: application/json' \
@@ -101,7 +103,7 @@ curl http://127.0.0.1:8000/ask \
 | 變數 | 預設值 | 說明 |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API |
-| `OLLAMA_CHAT_MODEL` | `llama3.2:latest` | 回答生成模型 |
+| `OLLAMA_CHAT_MODEL` | `qwen2.5:1.5b` | 回答生成模型 |
 | `OLLAMA_EMBED_MODEL` | `bge-m3:latest` | 僅 semantic 模式使用；改變後須重建索引 |
 | `LAW_RAG_DATA_DIR` | `./data` | 原始資料、文件與索引位置 |
 

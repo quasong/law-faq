@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f5f4ef">
+  <title>法問 · 台灣法規 AI</title>
+  <style>
+    :root {
+      --paper: #f5f4ef;
+      --paper-strong: #eeece4;
+      --surface: rgba(255, 255, 255, .86);
+      --ink: #18201e;
+      --ink-soft: #58625e;
+      --line: #dcded7;
+      --brand: #0e6655;
+      --brand-dark: #084c40;
+      --brand-pale: #e1f0eb;
+      --danger: #a33d31;
+      --shadow: 0 18px 50px rgba(31, 43, 38, .09), 0 2px 8px rgba(31, 43, 38, .05);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% -10%, rgba(14, 102, 85, .10), transparent 30rem),
+        radial-gradient(circle at 100% 10%, rgba(185, 145, 65, .09), transparent 28rem),
+        var(--paper);
+      font-family: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, textarea { font: inherit; }
+
+    button { -webkit-tap-highlight-color: transparent; }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+      padding: 0 28px;
+      background: rgba(245, 244, 239, .80);
+      border-bottom: 1px solid rgba(220, 222, 215, .72);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      font-weight: 760;
+      letter-spacing: -.02em;
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: var(--brand);
+      border-radius: 11px;
+      font-family: Georgia, serif;
+      font-size: 20px;
+      box-shadow: 0 6px 16px rgba(14, 102, 85, .20);
+    }
+
+    .brand small {
+      margin-left: 2px;
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 540;
+      letter-spacing: .04em;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      color: var(--ink-soft);
+      background: rgba(255, 255, 255, .64);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 620;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      background: #2c9a70;
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px rgba(44, 154, 112, .12);
+    }
+
+    main {
+      width: min(840px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 36px 0 210px;
+    }
+
+    .welcome {
+      min-height: calc(100vh - 290px);
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      text-align: center;
+      animation: rise .55s ease both;
+    }
+
+    .welcome-symbol {
+      width: 64px;
+      height: 64px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 24px;
+      color: var(--brand);
+      background: var(--brand-pale);
+      border: 1px solid rgba(14, 102, 85, .13);
+      border-radius: 21px;
+      font-family: Georgia, serif;
+      font-size: 32px;
+      box-shadow: inset 0 1px 0 white, 0 15px 35px rgba(14, 102, 85, .08);
+    }
+
+    h1 {
+      max-width: 680px;
+      margin: 0;
+      font-family: Georgia, "Noto Serif TC", serif;
+      font-size: clamp(34px, 5vw, 54px);
+      font-weight: 600;
+      line-height: 1.14;
+      letter-spacing: -.045em;
+    }
+
+    .welcome > p {
+      max-width: 590px;
+      margin: 18px auto 0;
+      color: var(--ink-soft);
+      font-size: 16px;
+      line-height: 1.75;
+    }
+
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 9px;
+      margin-top: 28px;
+    }
+
+    .suggestion {
+      padding: 10px 14px;
+      color: #3f4b47;
+      background: rgba(255, 255, 255, .68);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: border-color .2s, background .2s, transform .2s;
+    }
+
+    .suggestion:hover {
+      transform: translateY(-1px);
+      color: var(--brand-dark);
+      background: white;
+      border-color: rgba(14, 102, 85, .34);
+    }
+
+    .conversation { animation: rise .38s ease both; }
+
+    .user-row {
+      display: flex;
+      justify-content: flex-end;
+      margin: 8px 0 38px;
+    }
+
+    .user-message {
+      max-width: min(650px, 88%);
+      padding: 13px 17px;
+      background: #e7e7e1;
+      border: 1px solid #dadbd4;
+      border-radius: 18px 18px 5px 18px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+
+    .assistant-row {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .assistant-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      position: sticky;
+      top: 88px;
+      color: white;
+      background: var(--brand);
+      border-radius: 12px;
+      font-family: Georgia, serif;
+      font-size: 20px;
+    }
+
+    .assistant-body { min-width: 0; }
+
+    .generation-status {
+      height: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 9px;
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 620;
+    }
+
+    .thinking-dots { display: inline-flex; gap: 3px; }
+    .thinking-dots i {
+      width: 4px;
+      height: 4px;
+      background: var(--brand);
+      border-radius: 50%;
+      animation: blink 1.2s infinite ease-in-out;
+    }
+    .thinking-dots i:nth-child(2) { animation-delay: .16s; }
+    .thinking-dots i:nth-child(3) { animation-delay: .32s; }
+
+    .answer {
+      font-size: 16px;
+      line-height: 1.85;
+      overflow-wrap: anywhere;
+    }
+
+    .answer p { margin: 0 0 16px; }
+    .answer h2, .answer h3 {
+      margin: 25px 0 10px;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    .answer ul { margin: 8px 0 18px; padding-left: 23px; }
+    .answer li { margin: 7px 0; }
+    .answer strong { font-weight: 760; }
+    .answer code {
+      padding: 2px 5px;
+      background: var(--paper-strong);
+      border-radius: 5px;
+      font-size: .9em;
+    }
+
+    .answer.is-streaming::after {
+      content: "";
+      display: inline-block;
+      width: 2px;
+      height: 1.05em;
+      margin-left: 3px;
+      vertical-align: -.15em;
+      background: var(--brand);
+      animation: cursor .8s step-end infinite;
+    }
+
+    .citation {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 2px;
+      padding: 2px 7px;
+      color: var(--brand-dark);
+      background: var(--brand-pale);
+      border: 0;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 750;
+      vertical-align: .12em;
+    }
+
+    .citation:hover { background: #cde6dd; }
+
+    .source-section {
+      margin-top: 30px;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+
+    .source-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 11px;
+    }
+
+    .source-heading h2 { margin: 0; font-size: 14px; }
+    .source-heading span { color: var(--ink-soft); font-size: 11px; }
+
+    .source-list { display: grid; gap: 8px; }
+
+    .source-card {
+      scroll-margin-top: 92px;
+      background: rgba(255, 255, 255, .52);
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      overflow: hidden;
+      transition: border-color .2s, background .2s;
+    }
+
+    .source-card.flash {
+      background: var(--brand-pale);
+      border-color: rgba(14, 102, 85, .45);
+    }
+
+    .source-card summary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .source-card summary::-webkit-details-marker { display: none; }
+
+    .source-number {
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      color: var(--brand-dark);
+      background: var(--brand-pale);
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .source-title { min-width: 0; flex: 1; font-size: 13px; font-weight: 690; }
+    .source-date { color: var(--ink-soft); font-size: 11px; white-space: nowrap; }
+
+    .source-content {
+      padding: 0 14px 15px 48px;
+      color: #47524e;
+      font-size: 13px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+    }
+
+    .source-content a {
+      display: inline-block;
+      margin-top: 10px;
+      color: var(--brand);
+      font-weight: 670;
+      text-decoration: none;
+    }
+
+    .source-content a:hover { text-decoration: underline; }
+
+    .error-box {
+      padding: 14px 16px;
+      color: #782d25;
+      background: #fae8e5;
+      border: 1px solid #efc7c0;
+      border-radius: 13px;
+      line-height: 1.6;
+    }
+
+    .composer-area {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 30;
+      padding: 32px 20px 18px;
+      background: linear-gradient(to bottom, transparent, var(--paper) 30%);
+      pointer-events: none;
+    }
+
+    .composer-wrap {
+      width: min(840px, 100%);
+      margin: 0 auto;
+      pointer-events: auto;
+    }
+
+    .composer {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      padding: 11px 11px 11px 18px;
+      background: rgba(255, 255, 255, .92);
+      border: 1px solid #d4d7d0;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    .composer:focus-within {
+      border-color: rgba(14, 102, 85, .50);
+      box-shadow: 0 20px 55px rgba(31, 43, 38, .11), 0 0 0 3px rgba(14, 102, 85, .08);
+    }
+
+    textarea {
+      flex: 1;
+      width: 100%;
+      min-height: 28px;
+      max-height: 150px;
+      padding: 4px 0;
+      color: var(--ink);
+      background: transparent;
+      border: 0;
+      outline: 0;
+      resize: none;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    textarea::placeholder { color: #8a928e; }
+
+    .send-button {
+      flex: 0 0 auto;
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: var(--brand);
+      border: 0;
+      border-radius: 13px;
+      cursor: pointer;
+      font-size: 19px;
+      font-weight: 700;
+      transition: transform .2s, background .2s, opacity .2s;
+    }
+
+    .send-button:hover:not(:disabled) { transform: translateY(-1px); background: var(--brand-dark); }
+    .send-button:disabled { opacity: .38; cursor: default; }
+    .send-button.stop { background: #38413e; font-size: 12px; }
+
+    .composer-note {
+      margin: 9px 8px 0;
+      color: #747d79;
+      font-size: 11px;
+      line-height: 1.45;
+      text-align: center;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes blink {
+      0%, 70%, 100% { opacity: .2; transform: translateY(0); }
+      35% { opacity: 1; transform: translateY(-2px); }
+    }
+    @keyframes cursor { 0%, 48% { opacity: 1; } 49%, 100% { opacity: 0; } }
+
+    @media (max-width: 640px) {
+      .topbar { height: 60px; padding: 0 16px; }
+      .brand small, .status-pill span:last-child { display: none; }
+      .status-pill { padding: 8px; }
+      main { width: min(100% - 28px, 840px); padding-top: 24px; padding-bottom: 190px; }
+      .welcome { min-height: calc(100vh - 250px); }
+      .welcome-symbol { width: 56px; height: 56px; }
+      .welcome > p { font-size: 14px; }
+      .suggestions { align-items: stretch; flex-direction: column; width: 100%; }
+      .suggestion { text-align: left; border-radius: 12px; }
+      .assistant-row { grid-template-columns: 32px minmax(0, 1fr); gap: 11px; }
+      .assistant-mark { width: 32px; height: 32px; top: 74px; border-radius: 10px; font-size: 17px; }
+      .answer { font-size: 15px; }
+      .source-date { display: none; }
+      .source-content { padding-left: 14px; }
+      .composer-area { padding: 26px 12px 12px; }
+      .composer { padding-left: 14px; border-radius: 18px; }
+      .composer-note { font-size: 10px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">法</div>
+        <span>法問</span>
+        <small>台灣法規 AI</small>
+      </div>
+      <div class="status-pill" title="本地模型與本地法規索引">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>本地運行 · 資料不外傳</span>
+      </div>
+    </header>
+
+    <main id="workspace">
+      <section class="welcome" id="welcome">
+        <div class="welcome-symbol" aria-hidden="true">§</div>
+        <h1>從法條出發，理解你的法律問題</h1>
+        <p>搜尋台灣中央法律與法規命令，由本地 AI 模型整理重點，並附上可核對的官方法規來源。</p>
+        <div class="suggestions" aria-label="問題範例">
+          <button class="suggestion" type="button">民法規定幾歲成年？</button>
+          <button class="suggestion" type="button">雇主可以任意解僱勞工嗎？</button>
+          <button class="suggestion" type="button">憲法如何保障言論自由？</button>
+        </div>
+      </section>
+    </main>
+
+    <div class="composer-area">
+      <div class="composer-wrap">
+        <form class="composer" id="ask-form">
+          <textarea id="question" rows="1" maxlength="2000" aria-label="輸入法律問題" placeholder="輸入你的法律問題…"></textarea>
+          <button class="send-button" id="send" type="submit" disabled aria-label="送出問題">↑</button>
+        </form>
+        <p class="composer-note">AI 回答僅供法規檢索參考，不構成法律意見；重大權益請諮詢台灣執業律師。</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.querySelector('#ask-form');
+    const input = document.querySelector('#question');
+    const send = document.querySelector('#send');
+    const workspace = document.querySelector('#workspace');
+    let controller = null;
+    let isGenerating = false;
+    let activeSources = [];
+
+    document.querySelectorAll('.suggestion').forEach(button => {
+      button.addEventListener('click', () => {
+        input.value = button.textContent.trim();
+        resizeInput();
+        updateSendState();
+        input.focus();
+      });
+    });
+
+    input.addEventListener('input', () => {
+      resizeInput();
+      updateSendState();
+    });
+
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        if (!isGenerating && input.value.trim()) form.requestSubmit();
+      }
+    });
+
+    send.addEventListener('click', event => {
+      if (isGenerating) {
+        event.preventDefault();
+        controller?.abort();
+      }
+    });
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const question = input.value.trim();
+      if (!question || isGenerating) return;
+      await generate(question);
+    });
+
+    function resizeInput() {
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 150)}px`;
+    }
+
+    function updateSendState() {
+      send.disabled = !isGenerating && !input.value.trim();
+    }
+
+    function setGenerating(value) {
+      isGenerating = value;
+      input.disabled = value;
+      send.disabled = false;
+      send.classList.toggle('stop', value);
+      send.textContent = value ? '■' : '↑';
+      send.setAttribute('aria-label', value ? '停止生成' : '送出問題');
+      if (!value) updateSendState();
+    }
+
+    function createConversation(question) {
+      workspace.innerHTML = '';
+      const conversation = document.createElement('section');
+      conversation.className = 'conversation';
+
+      const userRow = document.createElement('div');
+      userRow.className = 'user-row';
+      const userMessage = document.createElement('div');
+      userMessage.className = 'user-message';
+      userMessage.textContent = question;
+      userRow.appendChild(userMessage);
+
+      const assistantRow = document.createElement('div');
+      assistantRow.className = 'assistant-row';
+      assistantRow.innerHTML = `
+        <div class="assistant-mark" aria-hidden="true">法</div>
+        <div class="assistant-body">
+          <div class="generation-status" aria-live="polite">
+            <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="status-text">正在檢索相關法規</span>
+          </div>
+          <div class="answer is-streaming" aria-live="polite"></div>
+          <div class="source-host"></div>
+        </div>`;
+      conversation.append(userRow, assistantRow);
+      workspace.appendChild(conversation);
+      return {
+        answer: conversation.querySelector('.answer'),
+        status: conversation.querySelector('.status-text'),
+        statusWrap: conversation.querySelector('.generation-status'),
+        sourceHost: conversation.querySelector('.source-host')
+      };
+    }
+
+    async function generate(question) {
+      setGenerating(true);
+      activeSources = [];
+      controller = new AbortController();
+      const view = createConversation(question);
+      let rawAnswer = '';
+      input.value = '';
+      resizeInput();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      try {
+        const response = await fetch('/ask/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, top_k: 6 }),
+          signal: controller.signal
+        });
+        if (!response.ok || !response.body) throw new Error('目前無法取得回答，請稍後再試。');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            handleEvent(JSON.parse(line), view, value => {
+              rawAnswer = value.type === 'append' ? rawAnswer + value.text : value.text;
+              view.answer.innerHTML = renderMarkdown(rawAnswer);
+            });
+          }
+          if (done) break;
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          view.status.textContent = '已停止生成';
+        } else {
+          showError(view, error.message || '發生未預期的錯誤。');
+        }
+      } finally {
+        view.answer.classList.remove('is-streaming');
+        view.statusWrap.querySelector('.thinking-dots')?.remove();
+        if (!view.status.textContent || view.status.textContent.includes('正在')) view.status.textContent = '回答完成';
+        if (activeSources.length) renderSources(view.sourceHost, activeSources);
+        setGenerating(false);
+        controller = null;
+        input.focus();
+      }
+    }
+
+    function handleEvent(event, view, updateAnswer) {
+      if (event.type === 'status') view.status.textContent = event.message;
+      if (event.type === 'sources') activeSources = event.sources || [];
+      if (event.type === 'delta') updateAnswer({ type: 'append', text: event.text || '' });
+      if (event.type === 'final') updateAnswer({ type: 'replace', text: event.text || '' });
+      if (event.type === 'error') throw new Error(event.message || '生成回答時發生錯誤。');
+      if (event.type === 'done') view.status.textContent = '回答完成';
+    }
+
+    function showError(view, message) {
+      view.status.textContent = '無法完成回答';
+      view.answer.classList.remove('is-streaming');
+      view.answer.innerHTML = '';
+      const box = document.createElement('div');
+      box.className = 'error-box';
+      box.textContent = message;
+      view.answer.appendChild(box);
+    }
+
+    function renderMarkdown(markdown) {
+      const safe = escapeHtml(markdown);
+      const lines = safe.split('\n');
+      let html = '';
+      let inList = false;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('- ')) {
+          if (!inList) { html += '<ul>'; inList = true; }
+          html += `<li>${inlineFormat(trimmed.slice(2))}</li>`;
+          continue;
+        }
+        if (inList) { html += '</ul>'; inList = false; }
+        if (!trimmed) continue;
+        if (trimmed.startsWith('### ')) html += `<h3>${inlineFormat(trimmed.slice(4))}</h3>`;
+        else if (trimmed.startsWith('## ')) html += `<h2>${inlineFormat(trimmed.slice(3))}</h2>`;
+        else html += `<p>${inlineFormat(trimmed)}</p>`;
+      }
+      if (inList) html += '</ul>';
+      return html;
+    }
+
+    function inlineFormat(value) {
+      return value
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\[來源(\d+)\]/g, (_, number) =>
+          `<button class="citation" type="button" onclick="focusSource(${Number(number)})">來源 ${Number(number)}</button>`
+        );
+    }
+
+    function renderSources(host, sources) {
+      host.innerHTML = '';
+      const section = document.createElement('section');
+      section.className = 'source-section';
+      const heading = document.createElement('div');
+      heading.className = 'source-heading';
+      heading.innerHTML = `<h2>法規來源</h2><span>${sources.length} 筆檢索結果</span>`;
+      const list = document.createElement('div');
+      list.className = 'source-list';
+
+      sources.forEach((source, index) => {
+        const card = document.createElement('details');
+        card.className = 'source-card';
+        card.id = `source-${index + 1}`;
+        const summary = document.createElement('summary');
+        summary.innerHTML = `
+          <span class="source-number">${index + 1}</span>
+          <span class="source-title">${escapeHtml(source.law_name)} ${escapeHtml(source.article_number)}</span>
+          <span class="source-date">異動 ${formatDate(source.modified_date)}</span>`;
+        const content = document.createElement('div');
+        content.className = 'source-content';
+        const text = document.createElement('div');
+        text.textContent = source.text;
+        content.appendChild(text);
+        if (isSafeUrl(source.url)) {
+          const link = document.createElement('a');
+          link.href = source.url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = '前往全國法規資料庫 ↗';
+          content.appendChild(link);
+        }
+        card.append(summary, content);
+        list.appendChild(card);
+      });
+      section.append(heading, list);
+      host.appendChild(section);
+    }
+
+    function focusSource(number) {
+      const source = document.querySelector(`#source-${number}`);
+      if (!source) return;
+      source.open = true;
+      source.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      source.classList.add('flash');
+      window.setTimeout(() => source.classList.remove('flash'), 1200);
+    }
+
+    function formatDate(value) {
+      const digits = String(value || '').replace(/\D/g, '');
+      return digits.length === 8 ? `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}` : (value || '未註明');
+    }
+
+    function isSafeUrl(value) {
+      try { return new URL(value).protocol === 'https:'; } catch { return false; }
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>

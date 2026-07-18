@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from .config import Settings
@@ -76,13 +77,7 @@ class LawRAG:
         vector = self.client.embeddings(model, [question])[0]
         return self.store.search(vector, top_k=top_k)
 
-    def ask(self, question: str, top_k: int = 6) -> Answer:
-        sources = self.retrieve(question, top_k=top_k)
-        if not sources:
-            return Answer(
-                text="找不到足夠相關的法規內容。請改用更完整的法規名稱、條號或法律關鍵詞。",
-                sources=[],
-            )
+    def _messages(self, question: str, sources: list[SearchResult]) -> list[dict[str, str]]:
         context_parts = []
         for index, result in enumerate(sources, start=1):
             chunk = result.chunk
@@ -101,11 +96,28 @@ class LawRAG:
             "法規依據：\n- <相關法規說明與 [來源N]>\n\n"
             "限制：<資料不足或個案適用提醒>"
         )
+        return [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ]
+
+    def stream(self, question: str, top_k: int = 6) -> tuple[list[SearchResult], Iterator[str]]:
+        sources = self.retrieve(question, top_k=top_k)
+        if not sources:
+            return sources, iter(())
+        return sources, self.client.chat_stream(
+            self.settings.chat_model, self._messages(question, sources)
+        )
+
+    def ask(self, question: str, top_k: int = 6) -> Answer:
+        sources = self.retrieve(question, top_k=top_k)
+        if not sources:
+            return Answer(
+                text="找不到足夠相關的法規內容。請改用更完整的法規名稱、條號或法律關鍵詞。",
+                sources=[],
+            )
         answer = self.client.chat(
             self.settings.chat_model,
-            [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
+            self._messages(question, sources),
         )
         return Answer(text=add_deterministic_citations(answer, sources), sources=sources)

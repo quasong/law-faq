@@ -23,6 +23,8 @@ law-rag = "taiwan_law_rag.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+taiwan_law_rag = ["web/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from typing import Any
 
 
@@ -48,3 +49,32 @@ class OllamaClient:
         except (KeyError, TypeError) as exc:
             raise RuntimeError("Ollama /api/chat 回傳格式不正確") from exc
 
+    def chat_stream(self, model: str, messages: list[dict[str, str]]) -> Iterator[str]:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=json.dumps(
+                {
+                    "model": model,
+                    "messages": messages,
+                    "stream": True,
+                    "options": {"temperature": 0.1},
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                for raw_line in response:
+                    if not raw_line.strip():
+                        continue
+                    payload = json.loads(raw_line)
+                    if payload.get("error"):
+                        raise RuntimeError(f"Ollama 生成失敗：{payload['error']}")
+                    content = payload.get("message", {}).get("content", "")
+                    if content:
+                        yield str(content)
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"無法連線 Ollama ({self.base_url})：{exc}。請確認 `ollama serve` 已啟動且模型已下載。"
+            ) from exc
