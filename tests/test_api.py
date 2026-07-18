@@ -19,6 +19,8 @@ def test_home_contains_streaming_llm_interface() -> None:
     assert 'id="model-name"' in html
     assert "'/models/pull/stream'" in html
     assert "確認部署" in html
+    assert 'id="ollama-start"' in html
+    assert "'/ollama/start'" in html
 
 
 def test_ndjson_event() -> None:
@@ -58,3 +60,24 @@ def test_model_catalog_marks_installed_and_excludes_embedding_model(monkeypatch)
     assert models_by_name["qwen2.5:1.5b"]["installed"] is True
     assert models_by_name["llama3.2:latest"]["installed"] is False
     assert "bge-m3:latest" not in models_by_name
+
+
+def test_starts_local_ollama_when_disconnected(monkeypatch) -> None:
+    class OfflineOllama:
+        def list_models(self):
+            raise RuntimeError("offline")
+
+    request = type(
+        "Request",
+        (),
+        {
+            "client": type("Client", (), {"host": "127.0.0.1"})(),
+            "headers": {},
+        },
+    )()
+    started = []
+    monkeypatch.setattr(api, "get_ollama", lambda: OfflineOllama())
+    monkeypatch.setattr(api, "start_ollama_server", lambda: started.append(True) or 1234)
+
+    assert api.start_ollama(request)["status"] == "starting"
+    assert started == [True]

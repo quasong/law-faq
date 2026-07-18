@@ -2,7 +2,8 @@ import io
 import json
 import urllib.request
 
-from taiwan_law_rag.ollama import OllamaClient, canonical_model_name
+import taiwan_law_rag.ollama as ollama
+from taiwan_law_rag.ollama import OllamaClient, canonical_model_name, start_ollama_server
 
 
 class FakeResponse(io.BytesIO):
@@ -44,3 +45,38 @@ def test_streams_model_pull_progress(monkeypatch) -> None:
 
     assert updates[1]["completed"] == 50
     assert updates[-1]["status"] == "success"
+
+
+def test_starts_detached_ollama_server(monkeypatch) -> None:
+    captured = {}
+
+    class FakeProcess:
+        pid = 4321
+
+        def poll(self):
+            return None
+
+    def fake_popen(command, **options):
+        captured["command"] = command
+        captured["options"] = options
+        return FakeProcess()
+
+    monkeypatch.setattr(ollama, "_ollama_process", None)
+    monkeypatch.setattr(ollama.shutil, "which", lambda command: "/usr/local/bin/ollama")
+    monkeypatch.setattr(ollama.subprocess, "Popen", fake_popen)
+
+    assert start_ollama_server() == 4321
+    assert captured["command"] == ["/usr/local/bin/ollama", "serve"]
+    assert captured["options"]["start_new_session"] is True
+
+
+def test_start_fails_when_ollama_cli_is_missing(monkeypatch) -> None:
+    monkeypatch.setattr(ollama, "_ollama_process", None)
+    monkeypatch.setattr(ollama.shutil, "which", lambda command: None)
+
+    try:
+        start_ollama_server()
+    except RuntimeError as exc:
+        assert "找不到 Ollama CLI" in str(exc)
+    else:
+        raise AssertionError("missing Ollama CLI should fail")

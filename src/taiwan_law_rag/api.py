@@ -6,6 +6,7 @@ from functools import lru_cache
 from importlib.resources import files
 from collections.abc import Iterator
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -13,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings
-from .ollama import OllamaClient, canonical_model_name
+from .ollama import OllamaClient, canonical_model_name, start_ollama_server
 from .rag import LawRAG, add_deterministic_citations
 
 
@@ -62,13 +63,35 @@ def _selected_model(value: str | None) -> str:
 
 def _require_local_request(request: Request) -> None:
     host = request.client.host if request.client else ""
-    if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
-        raise HTTPException(status_code=403, detail="基於安全考量，只有本機可以部署 Ollama 模型")
+    forwarded = request.headers.get("x-forwarded-for", "") if hasattr(request, "headers") else ""
+    forwarded_host = forwarded.split(",", 1)[0].strip()
+    local_hosts = {"127.0.0.1", "::1", "localhost", "testclient"}
+    if host not in local_hosts or (forwarded_host and forwarded_host not in local_hosts):
+        raise HTTPException(status_code=403, detail="基於安全考量，只有本機可以執行此操作")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/ollama/start")
+def start_ollama(request: Request) -> dict[str, object]:
+    _require_local_request(request)
+    settings = Settings.from_env()
+    ollama_host = urlparse(settings.ollama_base_url).hostname
+    if ollama_host not in {"127.0.0.1", "::1", "localhost"}:
+        raise HTTPException(status_code=400, detail="OLLAMA_BASE_URL 不是本機位址，無法自動啟動")
+    try:
+        get_ollama().list_models()
+        return {"status": "running", "message": "Ollama 已在運行"}
+    except RuntimeError:
+        pass
+    try:
+        start_ollama_server()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"status": "starting", "message": "正在啟動 Ollama"}
 
 
 @app.get("/models")

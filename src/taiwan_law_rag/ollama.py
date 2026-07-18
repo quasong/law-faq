@@ -1,10 +1,45 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
+import threading
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from typing import Any
+
+
+_START_LOCK = threading.Lock()
+_ollama_process: subprocess.Popen[bytes] | None = None
+
+
+def start_ollama_server() -> int:
+    """Start a detached local Ollama server and return its process id."""
+    global _ollama_process
+    with _START_LOCK:
+        if _ollama_process is not None and _ollama_process.poll() is None:
+            return _ollama_process.pid
+        executable = shutil.which("ollama")
+        if executable is None:
+            raise RuntimeError("找不到 Ollama CLI，請先安裝 Ollama 並確認 `ollama` 位於 PATH")
+
+        options: dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "close_fds": True,
+        }
+        if os.name == "nt":
+            options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        else:
+            options["start_new_session"] = True
+        try:
+            _ollama_process = subprocess.Popen([executable, "serve"], **options)
+        except OSError as exc:
+            raise RuntimeError(f"無法啟動 Ollama：{exc}") from exc
+        return _ollama_process.pid
 
 
 def canonical_model_name(name: str) -> str:

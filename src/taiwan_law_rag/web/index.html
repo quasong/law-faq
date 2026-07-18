@@ -399,6 +399,7 @@
     .model-picker {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 9px;
       margin: 0 10px 8px;
       color: var(--ink-soft);
@@ -427,6 +428,22 @@
     .model-state { white-space: nowrap; }
     .model-state[data-state="installed"] { color: var(--brand); }
     .model-state[data-state="missing"], .model-state[data-state="error"] { color: var(--danger); }
+
+    .ollama-start {
+      padding: 6px 10px;
+      color: var(--brand-dark);
+      background: var(--brand-pale);
+      border: 1px solid rgba(14, 102, 85, .24);
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .ollama-start:hover:not(:disabled) { border-color: rgba(14, 102, 85, .50); }
+    .ollama-start:disabled { opacity: .58; cursor: default; }
+    .ollama-start[hidden] { display: none; }
 
     .composer {
       display: flex;
@@ -607,6 +624,7 @@
           <input class="model-input" id="model-name" list="model-options" maxlength="100" autocomplete="off" spellcheck="false" placeholder="載入本機模型…">
           <datalist id="model-options"></datalist>
           <span class="model-state" id="model-state" aria-live="polite">連線中</span>
+          <button class="ollama-start" id="ollama-start" type="button" hidden>啟動 Ollama</button>
         </div>
         <form class="composer" id="ask-form">
           <textarea id="question" rows="1" maxlength="2000" aria-label="輸入法律問題" placeholder="輸入你的法律問題…"></textarea>
@@ -640,6 +658,7 @@
     const modelInput = document.querySelector('#model-name');
     const modelOptions = document.querySelector('#model-options');
     const modelState = document.querySelector('#model-state');
+    const ollamaStart = document.querySelector('#ollama-start');
     const modelDialog = document.querySelector('#model-dialog');
     const dialogModelName = document.querySelector('#dialog-model-name');
     const modelProgress = document.querySelector('#model-progress');
@@ -650,6 +669,7 @@
     let controller = null;
     let pullController = null;
     let isGenerating = false;
+    let ollamaConnected = false;
     let activeSources = [];
     let installedModels = new Set();
 
@@ -681,6 +701,8 @@
       }
     });
 
+    ollamaStart.addEventListener('click', startOllama);
+
     input.addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
@@ -710,13 +732,15 @@
     }
 
     function updateSendState() {
-      send.disabled = !isGenerating && (!input.value.trim() || !modelInput.value.trim());
+      send.disabled = !isGenerating && (
+        !ollamaConnected || !input.value.trim() || !modelInput.value.trim()
+      );
     }
 
     function setGenerating(value) {
       isGenerating = value;
       input.disabled = value;
-      modelInput.disabled = value;
+      modelInput.disabled = value || !ollamaConnected;
       send.disabled = false;
       send.classList.toggle('stop', value);
       send.textContent = value ? '■' : '↑';
@@ -810,9 +834,11 @@
       if (event.type === 'done') view.status.textContent = '回答完成';
     }
 
-    async function loadModels(preferredModel = '') {
-      modelState.dataset.state = '';
-      modelState.textContent = '連線中';
+    async function loadModels(preferredModel = '', options = {}) {
+      if (!options.quiet) {
+        modelState.dataset.state = '';
+        modelState.textContent = '連線中';
+      }
       try {
         const response = await fetch('/models');
         if (!response.ok) throw new Error('無法取得模型清單');
@@ -828,14 +854,58 @@
         });
         if (preferredModel) modelInput.value = preferredModel;
         else if (!modelInput.value) modelInput.value = data.default_model || 'qwen2.5:1.5b';
+        ollamaConnected = true;
+        modelInput.disabled = isGenerating;
+        ollamaStart.hidden = true;
+        ollamaStart.disabled = false;
+        ollamaStart.textContent = '啟動 Ollama';
         updateModelState();
         updateSendState();
+        return true;
       } catch (error) {
         if (!modelInput.value) modelInput.value = 'qwen2.5:1.5b';
+        ollamaConnected = false;
+        modelInput.disabled = true;
+        ollamaStart.hidden = false;
+        if (!options.quiet) {
+          modelState.dataset.state = 'error';
+          modelState.textContent = 'Ollama 未連線';
+        }
+        updateSendState();
+        return false;
+      }
+    }
+
+    async function startOllama() {
+      ollamaStart.disabled = true;
+      ollamaStart.textContent = '啟動中…';
+      modelState.dataset.state = '';
+      modelState.textContent = '正在啟動 Ollama';
+      try {
+        const response = await fetch('/ollama/start', { method: 'POST' });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(typeof payload.detail === 'string' ? payload.detail : '無法啟動 Ollama');
+        }
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          await delay(500);
+          if (await loadModels('', { quiet: true })) return;
+        }
+        throw new Error('Ollama 啟動逾時，請確認本機服務狀態');
+      } catch (error) {
+        ollamaConnected = false;
+        modelInput.disabled = true;
         modelState.dataset.state = 'error';
-        modelState.textContent = 'Ollama 未連線';
+        modelState.textContent = error.message || 'Ollama 啟動失敗';
+        ollamaStart.hidden = false;
+        ollamaStart.disabled = false;
+        ollamaStart.textContent = '重試啟動';
         updateSendState();
       }
+    }
+
+    function delay(milliseconds) {
+      return new Promise(resolve => window.setTimeout(resolve, milliseconds));
     }
 
     function canonicalModel(value) {
