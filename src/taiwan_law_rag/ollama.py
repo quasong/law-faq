@@ -7,6 +7,13 @@ from collections.abc import Iterator
 from typing import Any
 
 
+def canonical_model_name(name: str) -> str:
+    """Match Ollama's implicit `latest` tag for local model comparisons."""
+    value = name.strip()
+    final_part = value.rsplit("/", 1)[-1]
+    return value if ":" in final_part else f"{value}:latest"
+
+
 class OllamaClient:
     def __init__(self, base_url: str, timeout: int = 600):
         self.base_url = base_url.rstrip("/")
@@ -25,6 +32,57 @@ class OllamaClient:
         except urllib.error.URLError as exc:
             raise RuntimeError(
                 f"無法連線 Ollama ({self.base_url})：{exc}。請確認 `ollama serve` 已啟動且模型已下載。"
+            ) from exc
+
+    def _get(self, path: str) -> dict[str, Any]:
+        request = urllib.request.Request(f"{self.base_url}{path}", method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                return json.load(response)
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"無法連線 Ollama ({self.base_url})：{exc}。請確認 `ollama serve` 已啟動。"
+            ) from exc
+
+    def list_models(self) -> list[dict[str, Any]]:
+        result = self._get("/api/tags")
+        models = result.get("models")
+        if not isinstance(models, list):
+            raise RuntimeError("Ollama /api/tags 回傳格式不正確")
+        return [item for item in models if isinstance(item, dict)]
+
+    def model_names(self) -> list[str]:
+        names: list[str] = []
+        for item in self.list_models():
+            name = item.get("name") or item.get("model")
+            if isinstance(name, str) and name.strip():
+                names.append(name.strip())
+        return names
+
+    def is_model_installed(self, model: str) -> bool:
+        wanted = canonical_model_name(model)
+        return any(canonical_model_name(name) == wanted for name in self.model_names())
+
+    def pull_model(self, model: str) -> Iterator[dict[str, Any]]:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/pull",
+            data=json.dumps({"model": model, "stream": True}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                for raw_line in response:
+                    if not raw_line.strip():
+                        continue
+                    payload = json.loads(raw_line)
+                    if payload.get("error"):
+                        raise RuntimeError(f"Ollama 下載模型失敗：{payload['error']}")
+                    if isinstance(payload, dict):
+                        yield payload
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"無法連線 Ollama ({self.base_url})：{exc}。請確認 `ollama serve` 已啟動。"
             ) from exc
 
     def embeddings(self, model: str, texts: list[str]) -> list[list[float]]:

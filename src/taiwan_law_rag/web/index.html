@@ -38,7 +38,7 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    button, textarea { font: inherit; }
+    button, input, textarea { font: inherit; }
 
     button { -webkit-tap-highlight-color: transparent; }
 
@@ -396,6 +396,38 @@
       pointer-events: auto;
     }
 
+    .model-picker {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 10px 8px;
+      color: var(--ink-soft);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .model-picker label { white-space: nowrap; }
+
+    .model-input {
+      width: min(240px, 52vw);
+      min-width: 0;
+      padding: 7px 10px;
+      color: var(--ink);
+      background: rgba(255, 255, 255, .76);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+    }
+
+    .model-input:focus { border-color: rgba(14, 102, 85, .50); }
+    .model-input:disabled { opacity: .65; }
+
+    .model-state { white-space: nowrap; }
+    .model-state[data-state="installed"] { color: var(--brand); }
+    .model-state[data-state="missing"], .model-state[data-state="error"] { color: var(--danger); }
+
     .composer {
       display: flex;
       align-items: flex-end;
@@ -459,6 +491,51 @@
       text-align: center;
     }
 
+    .model-dialog {
+      width: min(460px, calc(100% - 32px));
+      padding: 0;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: 0 30px 90px rgba(20, 31, 27, .28);
+    }
+
+    .model-dialog::backdrop {
+      background: rgba(20, 31, 27, .42);
+      backdrop-filter: blur(4px);
+    }
+
+    .model-dialog-body { padding: 24px; }
+    .model-dialog h2 { margin: 0; font-size: 19px; }
+    .model-dialog p { margin: 10px 0 0; color: var(--ink-soft); line-height: 1.65; }
+    .model-dialog code { color: var(--brand-dark); overflow-wrap: anywhere; }
+
+    .model-progress { margin-top: 18px; }
+    .model-progress[hidden] { display: none; }
+    .model-progress progress { width: 100%; height: 8px; accent-color: var(--brand); }
+    .model-progress p { min-height: 20px; margin-top: 7px; font-size: 12px; }
+
+    .model-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 9px;
+      margin-top: 22px;
+    }
+
+    .dialog-button {
+      padding: 9px 14px;
+      color: var(--ink);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 650;
+    }
+
+    .dialog-button.primary { color: white; background: var(--brand); border-color: var(--brand); }
+    .dialog-button:disabled { opacity: .5; cursor: default; }
+
     @keyframes rise {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -486,6 +563,8 @@
       .source-content { padding-left: 14px; }
       .composer-area { padding: 26px 12px 12px; }
       .composer { padding-left: 14px; border-radius: 18px; }
+      .model-picker { margin-inline: 4px; }
+      .model-input { flex: 1; width: auto; }
       .composer-note { font-size: 10px; }
     }
 
@@ -523,6 +602,12 @@
 
     <div class="composer-area">
       <div class="composer-wrap">
+        <div class="model-picker">
+          <label for="model-name">回答模型</label>
+          <input class="model-input" id="model-name" list="model-options" maxlength="100" autocomplete="off" spellcheck="false" placeholder="載入本機模型…">
+          <datalist id="model-options"></datalist>
+          <span class="model-state" id="model-state" aria-live="polite">連線中</span>
+        </div>
         <form class="composer" id="ask-form">
           <textarea id="question" rows="1" maxlength="2000" aria-label="輸入法律問題" placeholder="輸入你的法律問題…"></textarea>
           <button class="send-button" id="send" type="submit" disabled aria-label="送出問題">↑</button>
@@ -532,14 +617,43 @@
     </div>
   </div>
 
+  <dialog class="model-dialog" id="model-dialog">
+    <div class="model-dialog-body">
+      <h2>部署本地模型？</h2>
+      <p>你的 Ollama 尚未安裝 <code id="dialog-model-name"></code>。確認後會下載模型；所需時間與磁碟空間取決於模型大小。</p>
+      <div class="model-progress" id="model-progress" hidden>
+        <progress id="model-progress-bar"></progress>
+        <p id="model-progress-status" aria-live="polite"></p>
+      </div>
+      <div class="model-dialog-actions">
+        <button class="dialog-button" id="model-cancel" type="button">取消</button>
+        <button class="dialog-button primary" id="model-deploy" type="button">確認部署</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const form = document.querySelector('#ask-form');
     const input = document.querySelector('#question');
     const send = document.querySelector('#send');
     const workspace = document.querySelector('#workspace');
+    const modelInput = document.querySelector('#model-name');
+    const modelOptions = document.querySelector('#model-options');
+    const modelState = document.querySelector('#model-state');
+    const modelDialog = document.querySelector('#model-dialog');
+    const dialogModelName = document.querySelector('#dialog-model-name');
+    const modelProgress = document.querySelector('#model-progress');
+    const modelProgressBar = document.querySelector('#model-progress-bar');
+    const modelProgressStatus = document.querySelector('#model-progress-status');
+    const modelCancel = document.querySelector('#model-cancel');
+    const modelDeploy = document.querySelector('#model-deploy');
     let controller = null;
+    let pullController = null;
     let isGenerating = false;
     let activeSources = [];
+    let installedModels = new Set();
+
+    loadModels();
 
     document.querySelectorAll('.suggestion').forEach(button => {
       button.addEventListener('click', () => {
@@ -553,6 +667,18 @@
     input.addEventListener('input', () => {
       resizeInput();
       updateSendState();
+    });
+
+    modelInput.addEventListener('input', () => {
+      updateModelState();
+      updateSendState();
+    });
+
+    modelInput.addEventListener('change', async () => {
+      const model = modelInput.value.trim();
+      if (model && !isGenerating && !installedModels.has(canonicalModel(model))) {
+        await ensureModelReady(model);
+      }
     });
 
     input.addEventListener('keydown', event => {
@@ -573,7 +699,9 @@
       event.preventDefault();
       const question = input.value.trim();
       if (!question || isGenerating) return;
-      await generate(question);
+      const model = modelInput.value.trim();
+      if (!model) return;
+      if (await ensureModelReady(model)) await generate(question, model);
     });
 
     function resizeInput() {
@@ -582,12 +710,13 @@
     }
 
     function updateSendState() {
-      send.disabled = !isGenerating && !input.value.trim();
+      send.disabled = !isGenerating && (!input.value.trim() || !modelInput.value.trim());
     }
 
     function setGenerating(value) {
       isGenerating = value;
       input.disabled = value;
+      modelInput.disabled = value;
       send.disabled = false;
       send.classList.toggle('stop', value);
       send.textContent = value ? '■' : '↑';
@@ -629,7 +758,7 @@
       };
     }
 
-    async function generate(question) {
+    async function generate(question, model) {
       setGenerating(true);
       activeSources = [];
       controller = new AbortController();
@@ -643,28 +772,17 @@
         const response = await fetch('/ask/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, top_k: 6 }),
+          body: JSON.stringify({ question, top_k: 6, model }),
           signal: controller.signal
         });
         if (!response.ok || !response.body) throw new Error('目前無法取得回答，請稍後再試。');
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        while (true) {
-          const { value, done } = await reader.read();
-          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            handleEvent(JSON.parse(line), view, value => {
-              rawAnswer = value.type === 'append' ? rawAnswer + value.text : value.text;
-              view.answer.innerHTML = renderMarkdown(rawAnswer);
-            });
-          }
-          if (done) break;
-        }
+        await readNdjson(response, event => {
+          handleEvent(event, view, value => {
+            rawAnswer = value.type === 'append' ? rawAnswer + value.text : value.text;
+            view.answer.innerHTML = renderMarkdown(rawAnswer);
+          });
+        });
       } catch (error) {
         if (error.name === 'AbortError') {
           view.status.textContent = '已停止生成';
@@ -688,7 +806,167 @@
       if (event.type === 'delta') updateAnswer({ type: 'append', text: event.text || '' });
       if (event.type === 'final') updateAnswer({ type: 'replace', text: event.text || '' });
       if (event.type === 'error') throw new Error(event.message || '生成回答時發生錯誤。');
+      if (event.type === 'model_missing') throw new Error(`模型 ${event.model || ''} 尚未部署，請重新選擇。`);
       if (event.type === 'done') view.status.textContent = '回答完成';
+    }
+
+    async function loadModels(preferredModel = '') {
+      modelState.dataset.state = '';
+      modelState.textContent = '連線中';
+      try {
+        const response = await fetch('/models');
+        if (!response.ok) throw new Error('無法取得模型清單');
+        const data = await response.json();
+        modelOptions.replaceChildren();
+        installedModels = new Set();
+        (data.models || []).forEach(item => {
+          const option = document.createElement('option');
+          option.value = item.name;
+          option.label = item.installed ? `已安裝${item.size ? ` · ${formatBytes(item.size)}` : ''}` : '尚未安裝';
+          modelOptions.appendChild(option);
+          if (item.installed) installedModels.add(canonicalModel(item.name));
+        });
+        if (preferredModel) modelInput.value = preferredModel;
+        else if (!modelInput.value) modelInput.value = data.default_model || 'qwen2.5:1.5b';
+        updateModelState();
+        updateSendState();
+      } catch (error) {
+        if (!modelInput.value) modelInput.value = 'qwen2.5:1.5b';
+        modelState.dataset.state = 'error';
+        modelState.textContent = 'Ollama 未連線';
+        updateSendState();
+      }
+    }
+
+    function canonicalModel(value) {
+      const model = String(value || '').trim();
+      const finalPart = model.split('/').pop() || '';
+      return finalPart.includes(':') ? model : `${model}:latest`;
+    }
+
+    function updateModelState() {
+      const model = modelInput.value.trim();
+      if (!model) {
+        modelState.dataset.state = 'missing';
+        modelState.textContent = '請選擇模型';
+        return;
+      }
+      const installed = installedModels.has(canonicalModel(model));
+      modelState.dataset.state = installed ? 'installed' : 'missing';
+      modelState.textContent = installed ? '已安裝' : '尚未安裝';
+    }
+
+    function ensureModelReady(model) {
+      if (installedModels.has(canonicalModel(model))) return Promise.resolve(true);
+      dialogModelName.textContent = model;
+      modelProgress.hidden = true;
+      modelProgressStatus.textContent = '';
+      modelProgressBar.removeAttribute('value');
+      modelCancel.textContent = '取消';
+      modelCancel.disabled = false;
+      modelDeploy.textContent = '確認部署';
+      modelDeploy.disabled = false;
+      modelDialog.showModal();
+
+      return new Promise(resolve => {
+        let settled = false;
+        const finish = value => {
+          if (settled) return;
+          settled = true;
+          pullController?.abort();
+          pullController = null;
+          modelDialog.close();
+          resolve(value);
+        };
+
+        modelCancel.onclick = () => finish(false);
+        modelDialog.oncancel = event => {
+          event.preventDefault();
+          finish(false);
+        };
+        modelDeploy.onclick = async () => {
+          modelDeploy.disabled = true;
+          modelCancel.textContent = '取消下載';
+          modelProgress.hidden = false;
+          modelProgressStatus.textContent = '準備連線 Ollama…';
+          modelProgressBar.removeAttribute('value');
+          pullController = new AbortController();
+          try {
+            await deployModel(model, pullController.signal);
+            installedModels.add(canonicalModel(model));
+            updateModelState();
+            modelProgressBar.max = 1;
+            modelProgressBar.value = 1;
+            modelProgressStatus.textContent = '模型部署完成，即將開始回答。';
+            modelCancel.disabled = true;
+            await loadModels(model);
+            window.setTimeout(() => finish(true), 450);
+          } catch (error) {
+            if (error.name === 'AbortError') {
+              finish(false);
+              return;
+            }
+            modelProgressStatus.textContent = error.message || '模型部署失敗。';
+            modelDeploy.disabled = false;
+            modelDeploy.textContent = '重試';
+            modelCancel.textContent = '關閉';
+          }
+        };
+      });
+    }
+
+    async function deployModel(model, signal) {
+      const response = await fetch('/models/pull/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model }),
+        signal
+      });
+      if (!response.ok || !response.body) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.detail || '目前無法部署模型。');
+      }
+      await readNdjson(response, event => {
+        if (event.type === 'error') throw new Error(event.message || '模型部署失敗。');
+        if (event.type === 'status') modelProgressStatus.textContent = event.message;
+        if (event.type === 'progress') {
+          const total = Number(event.total || 0);
+          const completed = Number(event.completed || 0);
+          if (total > 0) {
+            modelProgressBar.max = total;
+            modelProgressBar.value = Math.min(completed, total);
+            const percent = Math.floor((completed / total) * 100);
+            modelProgressStatus.textContent = `${event.status || '正在下載'} · ${percent}%`;
+          } else {
+            modelProgressBar.removeAttribute('value');
+            modelProgressStatus.textContent = event.status || '正在部署模型';
+          }
+        }
+      });
+    }
+
+    async function readNdjson(response, onEvent) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (line.trim()) onEvent(JSON.parse(line));
+        }
+        if (done) break;
+      }
+      if (buffer.trim()) onEvent(JSON.parse(buffer));
+    }
+
+    function formatBytes(value) {
+      const bytes = Number(value || 0);
+      if (!bytes) return '';
+      if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+      return `${Math.round(bytes / 1024 ** 2)} MB`;
     }
 
     function showError(view, message) {

@@ -88,13 +88,22 @@ uvicorn taiwan_law_rag.api:app --host 127.0.0.1 --port 8000
 
 打開 `http://127.0.0.1:8000`，或呼叫：
 
-Web UI 會逐字呈現本地模型輸出、顯示可展開的法規來源，且每次新問題會取代上一題，不保存對話歷史。`POST /ask` 提供一般 JSON 回應；`POST /ask/stream` 提供 NDJSON 串流回應。
+Web UI 會逐字呈現本地模型輸出、顯示可展開的法規來源，且每次新問題會取代上一題，不保存對話歷史。使用者可以從「回答模型」欄位選擇已安裝模型，或輸入其他 Ollama 模型名稱；若模型尚未安裝，介面會先請求確認，再串流顯示下載進度，完成後自動開始回答。
+
+基於安全考量，模型部署端點只接受從 `localhost` 發出的請求。若把問答網站公開到網路，訪客不能透過此端點任意下載模型或消耗主機磁碟空間。
+
+`POST /ask` 提供一般 JSON 回應；`POST /ask/stream` 提供 NDJSON 串流回應。兩者都可以傳入 `model` 選擇回答模型：
 
 ```bash
 curl http://127.0.0.1:8000/ask \
   -H 'Content-Type: application/json' \
-  -d '{"question":"雇主可以任意解僱勞工嗎？","top_k":6}'
+  -d '{"question":"雇主可以任意解僱勞工嗎？","top_k":6,"model":"qwen2.5:1.5b"}'
 ```
+
+模型管理 API：
+
+- `GET /models`：列出建議模型與本機安裝狀態
+- `POST /models/pull/stream`：確認後從 Ollama 串流下載模型，僅限本機呼叫
 
 ## 設定
 

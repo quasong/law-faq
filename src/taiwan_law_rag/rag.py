@@ -101,15 +101,17 @@ class LawRAG:
             {"role": "user", "content": user_prompt},
         ]
 
-    def stream(self, question: str, top_k: int = 6) -> tuple[list[SearchResult], Iterator[str]]:
+    def stream(
+        self, question: str, top_k: int = 6, chat_model: str | None = None
+    ) -> tuple[list[SearchResult], Iterator[str]]:
         sources = self.retrieve(question, top_k=top_k)
         if not sources:
             return sources, iter(())
         return sources, self.client.chat_stream(
-            self.settings.chat_model, self._messages(question, sources)
+            chat_model or self.settings.chat_model, self._messages(question, sources)
         )
 
-    def ask(self, question: str, top_k: int = 6) -> Answer:
+    def ask(self, question: str, top_k: int = 6, chat_model: str | None = None) -> Answer:
         sources = self.retrieve(question, top_k=top_k)
         if not sources:
             return Answer(
@@ -117,7 +119,7 @@ class LawRAG:
                 sources=[],
             )
         answer = self.client.chat(
-            self.settings.chat_model,
+            chat_model or self.settings.chat_model,
             self._messages(question, sources),
         )
         return Answer(text=add_deterministic_citations(answer, sources), sources=sources)
