@@ -17,6 +17,8 @@ def test_home_contains_streaming_llm_interface() -> None:
     assert "停止生成" in html
     assert "法規來源" in html
     assert 'id="model-name"' in html
+    assert '<select class="model-input"' in html
+    assert "'/models/catalog'" in html
     assert "'/models/pull/stream'" in html
     assert "確認部署" in html
     assert 'id="ollama-start"' in html
@@ -60,6 +62,18 @@ def test_model_catalog_marks_installed_and_excludes_embedding_model(monkeypatch)
     assert models_by_name["qwen2.5:1.5b"]["installed"] is True
     assert models_by_name["llama3.2:latest"]["installed"] is False
     assert "bge-m3:latest" not in models_by_name
+
+
+def test_official_model_catalog_excludes_embedding_model(monkeypatch) -> None:
+    class FakeCatalog:
+        def list_models(self):
+            return ["qwen3:4b", "bge-m3:latest", "gemma3:4b"]
+
+    monkeypatch.setattr(api, "get_model_catalog", lambda: FakeCatalog())
+    payload = api.model_catalog()
+
+    assert payload["source"] == "https://ollama.com/search"
+    assert [item["name"] for item in payload["models"]] == ["qwen3:4b", "gemma3:4b"]
 
 
 def test_starts_local_ollama_when_disconnected(monkeypatch) -> None:

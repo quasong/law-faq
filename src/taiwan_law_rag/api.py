@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings
+from .model_catalog import OllamaModelCatalog
 from .ollama import OllamaClient, canonical_model_name, start_ollama_server
 from .rag import LawRAG, add_deterministic_citations
 
@@ -26,7 +27,7 @@ app.mount(
 )
 
 MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9][A-Za-z0-9._-]*)?$")
-RECOMMENDED_CHAT_MODELS = ("qwen2.5:1.5b", "llama3.2:latest")
+RECOMMENDED_CHAT_MODELS = ("qwen3:4b", "qwen2.5:1.5b", "llama3.2:latest")
 
 
 def _validate_model_name(value: str) -> str:
@@ -55,6 +56,11 @@ def get_rag() -> LawRAG:
 def get_ollama() -> OllamaClient:
     settings = Settings.from_env()
     return OllamaClient(settings.ollama_base_url)
+
+
+@lru_cache(maxsize=1)
+def get_model_catalog() -> OllamaModelCatalog:
+    return OllamaModelCatalog()
 
 
 def _selected_model(value: str | None) -> str:
@@ -126,6 +132,24 @@ def models() -> dict[str, object]:
                 "size": installed_by_name.get(name, {}).get("size"),
             }
             for name in names
+        ],
+    }
+
+
+@app.get("/models/catalog")
+def model_catalog() -> dict[str, object]:
+    settings = Settings.from_env()
+    embed_name = canonical_model_name(settings.embed_model)
+    try:
+        names = get_model_catalog().list_models()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "source": "https://ollama.com/search",
+        "models": [
+            {"name": name, "installed": False, "size": None}
+            for name in names
+            if canonical_model_name(name) != embed_name
         ],
     }
 

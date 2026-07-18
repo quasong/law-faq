@@ -410,9 +410,9 @@
     .model-picker label { white-space: nowrap; }
 
     .model-input {
-      width: min(240px, 52vw);
+      width: min(370px, 62vw);
       min-width: 0;
-      padding: 7px 10px;
+      padding: 7px 32px 7px 10px;
       color: var(--ink);
       background: rgba(255, 255, 255, .76);
       border: 1px solid var(--line);
@@ -420,6 +420,7 @@
       outline: 0;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 11px;
+      cursor: pointer;
     }
 
     .model-input:focus { border-color: rgba(14, 102, 85, .50); }
@@ -621,8 +622,9 @@
       <div class="composer-wrap">
         <div class="model-picker">
           <label for="model-name">回答模型</label>
-          <input class="model-input" id="model-name" list="model-options" maxlength="100" autocomplete="off" spellcheck="false" placeholder="載入本機模型…">
-          <datalist id="model-options"></datalist>
+          <select class="model-input" id="model-name" aria-label="回答模型">
+            <option value="">載入本機模型…</option>
+          </select>
           <span class="model-state" id="model-state" aria-live="polite">連線中</span>
           <button class="ollama-start" id="ollama-start" type="button" hidden>啟動 Ollama</button>
         </div>
@@ -656,7 +658,6 @@
     const send = document.querySelector('#send');
     const workspace = document.querySelector('#workspace');
     const modelInput = document.querySelector('#model-name');
-    const modelOptions = document.querySelector('#model-options');
     const modelState = document.querySelector('#model-state');
     const ollamaStart = document.querySelector('#ollama-start');
     const modelDialog = document.querySelector('#model-dialog');
@@ -672,6 +673,9 @@
     let ollamaConnected = false;
     let activeSources = [];
     let installedModels = new Set();
+    let modelItems = new Map();
+    let catalogLoading = false;
+    let catalogLoaded = false;
 
     loadModels();
 
@@ -689,13 +693,10 @@
       updateSendState();
     });
 
-    modelInput.addEventListener('input', () => {
-      updateModelState();
-      updateSendState();
-    });
-
     modelInput.addEventListener('change', async () => {
       const model = modelInput.value.trim();
+      updateModelState();
+      updateSendState();
       if (model && !isGenerating && !installedModels.has(canonicalModel(model))) {
         await ensureModelReady(model);
       }
@@ -843,17 +844,17 @@
         const response = await fetch('/models');
         if (!response.ok) throw new Error('無法取得模型清單');
         const data = await response.json();
-        modelOptions.replaceChildren();
         installedModels = new Set();
-        (data.models || []).forEach(item => {
-          const option = document.createElement('option');
-          option.value = item.name;
-          option.label = item.installed ? `已安裝${item.size ? ` · ${formatBytes(item.size)}` : ''}` : '尚未安裝';
-          modelOptions.appendChild(option);
-          if (item.installed) installedModels.add(canonicalModel(item.name));
+        modelItems.forEach(item => {
+          item.installed = false;
+          item.size = null;
         });
-        if (preferredModel) modelInput.value = preferredModel;
-        else if (!modelInput.value) modelInput.value = data.default_model || 'qwen2.5:1.5b';
+        (data.models || []).forEach(item => {
+          const name = canonicalModel(item.name);
+          modelItems.set(name, { ...item, name });
+          if (item.installed) installedModels.add(name);
+        });
+        renderModelOptions(preferredModel || modelInput.value || data.default_model || 'qwen3:4b');
         ollamaConnected = true;
         modelInput.disabled = isGenerating;
         ollamaStart.hidden = true;
@@ -861,9 +862,9 @@
         ollamaStart.textContent = '啟動 Ollama';
         updateModelState();
         updateSendState();
+        loadModelCatalog();
         return true;
       } catch (error) {
-        if (!modelInput.value) modelInput.value = 'qwen2.5:1.5b';
         ollamaConnected = false;
         modelInput.disabled = true;
         ollamaStart.hidden = false;
@@ -874,6 +875,62 @@
         updateSendState();
         return false;
       }
+    }
+
+    async function loadModelCatalog() {
+      if (catalogLoading || catalogLoaded) return;
+      catalogLoading = true;
+      try {
+        const response = await fetch('/models/catalog');
+        if (!response.ok) return;
+        const data = await response.json();
+        (data.models || []).forEach(item => {
+          const name = canonicalModel(item.name);
+          if (!modelItems.has(name)) modelItems.set(name, { ...item, name });
+        });
+        catalogLoaded = true;
+        renderModelOptions(modelInput.value);
+      } catch {
+        catalogLoaded = false;
+      } finally {
+        catalogLoading = false;
+      }
+    }
+
+    function renderModelOptions(selectedModel = '') {
+      const selected = canonicalModel(selectedModel);
+      const items = Array.from(modelItems.values());
+      const installed = items
+        .filter(item => item.installed)
+        .sort((left, right) => left.name.localeCompare(right.name));
+      const available = items
+        .filter(item => !item.installed)
+        .sort((left, right) => left.name.localeCompare(right.name));
+      modelInput.replaceChildren();
+      appendModelGroup('已安裝', installed);
+      appendModelGroup('可從 Ollama 下載', available);
+      const match = items.find(item => canonicalModel(item.name) === selected);
+      if (match) modelInput.value = match.name;
+      else if (installed[0]) modelInput.value = installed[0].name;
+      else if (available[0]) modelInput.value = available[0].name;
+      updateModelState();
+      updateSendState();
+    }
+
+    function appendModelGroup(label, items) {
+      if (!items.length) return;
+      const group = document.createElement('optgroup');
+      group.label = label;
+      items.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.name;
+        const state = item.installed
+          ? `已安裝${item.size ? ` · ${formatBytes(item.size)}` : ''}`
+          : '可下載';
+        option.textContent = `${item.name} — ${state}`;
+        group.appendChild(option);
+      });
+      modelInput.appendChild(group);
     }
 
     async function startOllama() {
@@ -923,7 +980,7 @@
       }
       const installed = installedModels.has(canonicalModel(model));
       modelState.dataset.state = installed ? 'installed' : 'missing';
-      modelState.textContent = installed ? '已安裝' : '尚未安裝';
+      modelState.textContent = installed ? '已安裝' : '可下載';
     }
 
     function ensureModelReady(model) {
