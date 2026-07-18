@@ -24,7 +24,7 @@ law-rag = "taiwan_law_rag.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-taiwan_law_rag = ["web/*.html"]
+taiwan_law_rag = ["web/*.html", "web/assets/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

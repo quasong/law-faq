@@ -7,13 +7,19 @@ from collections.abc import Iterator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings
 from .rag import LawRAG, add_deterministic_citations
 
 
-app = FastAPI(title="台灣法規 RAG", version="0.1.0")
+app = FastAPI(title="法律Q&A", version="0.1.0")
+app.mount(
+    "/assets",
+    StaticFiles(directory=str(files("taiwan_law_rag").joinpath("web/assets"))),
+    name="assets",
+)
 
 
 class Question(BaseModel):

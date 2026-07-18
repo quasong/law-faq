@@ -5,6 +5,9 @@ from taiwan_law_rag.api import _event, home
 
 def test_home_contains_streaming_llm_interface() -> None:
     html = home()
+    assert "法律Q&amp;A" in html
+    assert "lady-justice.png" in html
+    assert "⚖️" in html
     assert 'id="ask-form"' in html
     assert "'/ask/stream'" in html
     assert "停止生成" in html
